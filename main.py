@@ -2,96 +2,105 @@ import streamlit as st
 import pandas as pd
 import math
 
-# --- إعدادات الصفحة الرسمية ---
-st.set_page_config(page_title="جامعة النهرين - كلية الهندسة", layout="centered")
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="جامعة النهرين - قسم الهندسة المدنية", layout="centered")
 
-# --- الترويسة الرسمية (تم تصحيح الكود هنا) ---
+# --- الترويسة النصية الرسمية (بدون شعار) ---
 st.markdown("""
 <div style="text-align: right; dir: rtl; line-height: 1.2; background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-right: 5px solid #1f77b4;">
-    <h2 style="margin: 0; color: #1f77b4;">جامعة النهرين</h2>
-    <h3 style="margin: 0; color: #333;">كلية الهندسة</h3>
-    <p style="margin: 0; font-size: 18px; color: #666;">قسم الهندسة المدنية</p>
+    <h2 style="margin: 0; color: #1f77b4;">جامعة النهرين - كلية الهندسة</h2>
+    <h3 style="margin: 0; color: #333;">قسم الهندسة المدنية</h3>
+    <p style="margin: 0; font-size: 16px; color: #666;">نظام الاختبارات الإلكتروني الذكي</p>
 </div>
 <br>
 """, unsafe_allow_html=True)
 
-# --- إعدادات الحالة (Session State) لمنع الأخطاء ---
-if 'active_shape' not in st.session_state:
-    st.session_state['active_shape'] = ["Square/Rectangle"]
-if 'active_topic' not in st.session_state:
-    st.session_state['active_topic'] = "Bending Stress"
+# --- إدارة الحالة (لوحة التحكم) ---
+if 'exam_image' not in st.session_state: st.session_state['exam_image'] = None
+if 'exam_text' not in st.session_state: st.session_state['exam_text'] = ""
+if 'active_topic' not in st.session_state: st.session_state['active_topic'] = "Bending Stress"
 
-# --- واجهة التدريسي (لوحة التحكم في القائمة الجانبية) ---
 with st.sidebar:
-    st.header("⚙️ لوحة تحكم الأستاذ")
-    admin_key = st.text_input("رمز الإدارة", type="password")
+    st.header("🔐 لوحة إدارة الاختبار")
+    admin_key = st.text_input("رمز الدخول للمسؤول", type="password")
+    
     if admin_key == "prof2026":
-        st.success("تم تسجيل الدخول")
-        st.session_state['active_topic'] = st.selectbox("الموضوع الحالي:", ["Bending Stress", "Torsion"])
-        st.session_state['active_shape'] = st.multiselect(
-            "تفعيل المقاطع للطلاب:", 
-            ["Square/Rectangle", "Solid Cylinder", "Hollow Tube (Rectangular)", "Hollow Cylinder (Pipe)"],
-            default=st.session_state['active_shape']
-        )
+        st.success("وضع الإدارة مفعل")
+        st.session_state['active_topic'] = st.selectbox("اختر الموضوع:", ["Bending Stress", "Torsion", "Shear Stress"])
+        
+        st.write("---")
+        st.write("**تجهيز محتوى السؤال:**")
+        st.session_state['exam_text'] = st.text_area("اكتب نص السؤال هنا:", value=st.session_state['exam_text'])
+        uploaded_q_image = st.file_uploader("ارفع صورة المسألة (أحمال، أبعاد...):", type=['png', 'jpg', 'jpeg'])
+        if uploaded_q_image:
+            st.session_state['exam_image'] = uploaded_q_image
+        
+        if st.button("تحديث الاختبار للطلاب"):
+            st.toast("تم تحديث محتوى الاختبار بنجاح!")
 
-# --- بيانات الطالب ---
-st.subheader("📝 استمارة الاختبار الإلكتروني")
-with st.container():
-    c1, c2 = st.columns(2)
-    student_name = c1.text_input("اسم الطالب الثلاثي")
-    student_id = c2.text_input("الرقم الجامعي / المرحلة الثانية")
+# --- واجهة الطالب ---
+if st.session_state['exam_text'] or st.session_state['exam_image']:
+    st.warning(f"📝 السؤال الحالي: {st.session_state['active_topic']}")
+    if st.session_state['exam_text']:
+        st.info(st.session_state['exam_text'])
+    if st.session_state['exam_image']:
+        st.image(st.session_state['exam_image'], caption="رسم توضيحي للمسألة")
 
 st.divider()
 
-# --- اختيار شكل المقطع العرضي ---
-st.subheader("📐 معطيات السؤال الهندسي")
-# نستخدم القائمة المفعلة من قبل الأستاذ
-selected_shape = st.selectbox("اختر شكل المقطع العرضي (Cross-section):", st.session_state['active_shape'])
+# بيانات الطالب
+c_s1, c_s2 = st.columns(2)
+student_name = c_s1.text_input("الاسم الثلاثي للطالب")
+student_id = c_s2.text_input("الرقم الجامعي")
 
-# تخصيص المدخلات بناءً على الشكل المختار
-sc1, sc2, sc3 = st.columns(3)
-b, h, d_out, d_in, t = 0, 0, 0, 0, 0
+# اختيار المقطع
+st.subheader("📐 أدوات الحل")
+shape = st.selectbox("اختر شكل المقطع العرضي للمسألة:", 
+                     ["Rectangle", "Solid Circle", "Hollow Circle", "I-Section", "C-Channel"])
 
-if selected_shape == "Square/Rectangle":
-    b = sc1.number_input("العرض b (mm)", value=150.0)
-    h = sc2.number_input("الارتفاع h (mm)", value=300.0)
+# عرض صور توضيحية للمقاطع المختارة
+if shape == "I-Section":
+    
+elif shape == "C-Channel":
+    
+elif shape == "Hollow Circle":
     
 
-elif selected_shape == "Hollow Tube (Rectangular)":
-    b = sc1.number_input("العرض الخارجي B (mm)", value=200.0)
-    h = sc2.number_input("الارتفاع الخارجي H (mm)", value=400.0)
-    t = sc3.number_input("سمك الجدار t (mm)", value=10.0)
-    
+# حقول إدخال النتائج
+st.write("---")
+st.write("**النواتج النهائية لردود الأفعال والحسابات:**")
+r1, r2 = st.columns(2)
+st_ra = r1.number_input("Reaction at A (kN)")
+st_rb = r2.number_input("Reaction at B (kN)")
 
-elif selected_shape == "Solid Cylinder":
-    d_out = sc1.number_input("القطر D (mm)", value=100.0)
+if st.session_state['active_topic'] == "Shear Stress":
     
+    sc1, sc2, sc3 = st.columns(3)
+    area = sc1.number_input("Area A (mm²)")
+    thickness = sc2.number_input("Thickness t (mm)")
+    product = sc3.number_input("Result of (A * t)")
+    shear_final = st.number_input("Final Shear Stress (MPa)")
 
-elif selected_shape == "Hollow Cylinder (Pipe)":
-    d_out = sc1.number_input("القطر الخارجي D_out (mm)", value=120.0)
-    d_in = sc2.number_input("القطر الداخلي d_in (mm)", value=100.0)
+elif st.session_state['active_topic'] == "Torsion":
     
+    tc1, tc2 = st.columns(2)
+    st_j = tc1.number_input("Polar Moment J (mm⁴)")
+    st_angle = tc2.number_input("Angle of Twist (rad)")
 
-# --- إدخال النتائج ---
+else: # Bending
+    
+    bc1, bc2 = st.columns(2)
+    st_i = bc1.number_input("Moment of Inertia I (mm⁴)")
+    st_bending = bc2.number_input("Max Bending Stress (MPa)")
+
 st.divider()
-st.subheader("📤 تسليم النتائج النهائية")
-res1, res2, res3 = st.columns(3)
-st_I = res1.number_input("عزم القصور I (mm^4)", format="%.2e")
-st_stress = res2.number_input("الإجهاد الأقصى (MPa)")
-st_y = res3.number_input("بعد الألياف القصوى y (mm)")
+student_file = st.file_uploader("ارفع ملف الحل الورقي")
 
-theory_ans = st.text_area("اشرح باختصار تأثير شكل المقطع على توزيع الإجهادات:")
-uploaded_file = st.file_uploader("ارفع صورة الحل اليدوي")
-
-if st.button("إرسال الإجابة النهائية"):
+if st.button("إرسال الإجابة النهائية للقسم"):
     if student_name and student_id:
+        st.success(f"تم بنجاح استلام إجابة الطالب: {student_name}")
         st.balloons()
-        st.success(f"تم استلام إجابتك بنجاح يا {student_name}. سيتم تدقيق الحل من قبل القسم.")
     else:
-        st.warning("يرجى إكمال الاسم والرقم الجامعي قبل الإرسال.")
+        st.error("الرجاء إدخال الاسم والرقم الجامعي")
 
-# تذييل الصفحة
-st.markdown("""
-<br><hr>
-<p style="text-align: center; color: gray; font-size: 12px;">© 2026 جامعة النهرين - كلية الهندسة - قسم الهندسة المدنية</p>
-""", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #999; font-size: 12px;'>قسم الهندسة المدنية - جامعة النهرين © 2026</p>", unsafe_allow_html=True)
