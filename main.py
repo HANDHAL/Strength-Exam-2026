@@ -1,89 +1,95 @@
 import streamlit as st
 import pandas as pd
-import os
+import math
 
-# --- دالة الحسابات الهندسية ---
-def calculate_results(L, b, h, P, e_type, load_type):
-    b_m, h_m = b/1000, h/1000
-    I = (b_m * h_m**3) / 12
-    y = h_m / 2
-    M_max = 0
-    
-    if e_type == "Cantilever":
-        if "Point" in load_type: M_max = P * 1000 * L
-        elif "UDL" in load_type: M_max = (P * 1000 * L**2) / 2
-        else: M_max = (P * 1000 * L**2) / 6 # Triangular
-    else: # Simply Supported
-        if "Point" in load_type: M_max = (P * 1000 * L) / 4
-        elif "UDL" in load_type: M_max = (P * 1000 * L**2) / 8
-        else: M_max = (P * 1000 * L**2) / 12 # Triangular
-        
-    stress = (M_max * y / I) / 10**6
-    return I, M_max, stress
+# --- إعدادات الصفحة الرسمية ---
+st.set_page_config(page_title="جامعة النهرين - كلية الهندسة", layout="centered")
 
-# --- الواجهة ---
-st.set_page_config(page_title="Strength Exam", layout="wide")
-st.title("🏗️ اختبار مقاومة المواد - المرحلة الثانية")
+# --- الترويسة الرسمية ---
+col_logo, col_title = st.columns([1, 4])
+with col_title:
+    st.markdown("""
+    <div style="text-align: right; line-height: 1.2;">
+        <h2 style="margin: 0;">جامعة النهرين</h2>
+        <h3 style="margin: 0;">كلية الهندسة</h3>
+        <p style="margin: 0; font-size: 18px;">قسم الهندسة المدنية</p>
+        <hr style="border: 1px solid #1f77b4;">
+    </div>
+    """, unsafe_content_parser=True, unsafe_allow_html=True)
 
-# كلمة مرور بسيطة للطلاب
-if "authenticated" not in st.session_state:
-    password = st.text_input("أدخل رمز الدخول للاختبار:", type="password")
-    if password == "1234": # يمكنك تغيير الرمز هنا
-        st.session_state["authenticated"] = True
-        st.rerun()
-    else:
-        st.stop()
+# --- واجهة التدريسي (لوحة التحكم) ---
+if 'active_shape' not in st.session_state:
+    st.session_state['active_shape'] = ["Square/Rectangle"]
 
-# بيانات الطالب
 with st.sidebar:
-    st.header("بيانات الطالب")
-    name = st.text_input("الاسم الثلاثي")
-    st_id = st.text_input("الرقم الجامعي")
+    st.header("⚙️ لوحة تحكم الأستاذ")
+    admin_key = st.text_input("رمز الإدارة", type="password")
+    if admin_key == "prof2026":
+        st.success("تم تسجيل الدخول")
+        st.session_state['active_topic'] = st.selectbox("الموضوع الحالي:", ["Bending Stress", "Torsion"])
+        st.session_state['active_shape'] = st.multiselect(
+            "تفعيل المقاطع للطلاب:", 
+            ["Square/Rectangle", "Solid Cylinder", "Hollow Tube (Rectangular)", "Hollow Cylinder (Pipe)"],
+            default=["Square/Rectangle"]
+        )
 
-# اختيار معطيات السؤال
-col1, col2 = st.columns(2)
-with col1:
-    e_type = st.selectbox("نوع العتبة", ["Cantilever", "Simply Supported"])
-    load_type = st.selectbox("نوع الحمل", ["Point Load", "UDL (موزع)", "Triangular (مثلثي)"])
-    P = st.selectbox("قيمة الحمل P (kN)", [10, 20, 50])
-with col2:
-    L = st.slider("طول العتبة L (m)", 2, 10, 5)
-    b = st.number_input("العرض b (mm)", value=150)
-    h = st.number_input("الارتفاع h (mm)", value=300)
+# --- بيانات الطالب ---
+st.subheader("📝 استمارة الاختبار الإلكتروني")
+with st.container():
+    c1, c2 = st.columns(2)
+    student_name = c1.text_input("اسم الطالب الثلاثي")
+    student_id = c2.text_input("الرقم الجامعي / المرحلة الثانية")
 
 st.divider()
 
-# حقول الإجابة
-st.subheader("✍️ أدخل نتائج حساباتك:")
-c1, c2, c3 = st.columns(3)
-st_I = c1.number_input("قيمة I (m^4)")
-st_M = c2.number_input("قيمة M max (N.m)")
-st_S = c3.number_input("قيمة الإجهاد (MPa)")
+# --- اختيار شكل المقطع العرضي ---
+st.subheader("📐 معطيات السؤال الهندسي")
+selected_shape = st.selectbox("اختر شكل المقطع العرضي (Cross-section):", st.session_state['active_shape'])
 
-theory_q = st.text_area("سؤال نظري: ما تأثير زيادة ارتفاع المقطع (h) على الإجهاد؟")
-file = st.file_uploader("ارفع صورة الحل الورقي")
+# تخصيص المدخلات والأشكال التوضيحية بناءً على الشكل
+sc1, sc2, sc3 = st.columns(3)
+b, h, d_out, d_in, t = 0, 0, 0, 0, 0
 
-if st.button("إرسال الإجابة وحفظها"):
-    if name and st_id:
-        I_ref, M_ref, S_ref = calculate_results(L, b, h, P, e_type, load_type)
-        
-        data = {
-            "الاسم": [name], "الرقم": [st_id], "نوع الحمل": [load_type],
-            "إجهاد الطالب": [st_S], "الإجهاد الصحيح": [round(S_ref, 2)],
-            "النتيجة": ["صح" if abs(st_S-S_ref) < 1 else "خطأ"]
-        }
-        df_new = pd.DataFrame(data)
-        
-        # حفظ في إكسل
-        fname = "results.xlsx"
-        if os.path.exists(fname):
-            df_old = pd.read_excel(fname)
-            df_final = pd.concat([df_old, df_new]).sort_values(by="الاسم")
-        else:
-            df_final = df_new
-        
-        df_final.to_excel(fname, index=False)
-        st.success("تم الحفظ بنجاح!")
+if selected_shape == "Square/Rectangle":
+    b = sc1.number_input("العرض b (mm)", value=150.0)
+    h = sc2.number_input("الارتفاع h (mm)", value=300.0)
+    
+
+elif selected_shape == "Hollow Tube (Rectangular)":
+    b = sc1.number_input("العرض الخارجي B (mm)", value=200.0)
+    h = sc2.number_input("الارتفاع الخارجي H (mm)", value=400.0)
+    t = sc3.number_input("سمك الجدار t (mm)", value=10.0)
+    
+
+elif selected_shape == "Solid Cylinder":
+    d_out = sc1.number_input("القطر D (mm)", value=100.0)
+    
+
+elif selected_shape == "Hollow Cylinder (Pipe)":
+    d_out = sc1.number_input("القطر الخارجي D_out (mm)", value=120.0)
+    d_in = sc2.number_input("القطر الداخلي d_in (mm)", value=100.0)
+    
+
+# --- إدخال النتائج ---
+st.divider()
+st.subheader("📤 تسليم النتائج النهائية")
+res1, res2, res3 = st.columns(3)
+st_I = res1.number_input("عزم القصور I (mm^4)")
+st_stress = res2.number_input("الإجهاد الأقصى (MPa)")
+st_y = res3.number_input("بعد الألياف القصوى y (mm)")
+
+theory_ans = st.text_area("اشرح باختصار تأثير شكل المقطع على توزيع الإجهادات:")
+uploaded_file = st.file_uploader("ارفع صورة الحل اليدوي (بصيغة JPG أو PDF)")
+
+if st.button("إرسال الإجابة النهائية"):
+    if student_name and student_id:
         st.balloons()
+        st.success(f"تم استلام إجابتك بنجاح يا {student_name}. سيتم تدقيق الحل من قبل القسم.")
     else:
-        st.error("يرجى ملء الاسم والرقم الجامعي")
+        st.warning("يرجى إكمال الاسم والرقم الجامعي قبل الإرسال.")
+
+# تذييل الصفحة
+st.markdown("""
+---
+<p style="text-align: center; color: gray;">© 2026 جامعة النهرين - كلية الهندسة - قسم الهندسة المدنية</p>
+""", unsafe_allow_html=True)
